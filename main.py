@@ -1,3 +1,5 @@
+
+SHORT = False
 class bcolors:
     HEADER = '\033[95m'
     OKBLUE = '\033[94m'
@@ -7,8 +9,6 @@ class bcolors:
     ENDC = '\033[0m'
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
-
-SHORT = False
 
 def dateToYYYYMMDD(date, *args):
     day = date.day
@@ -135,12 +135,12 @@ model.add(Dense(1, activation='sigmoid'))
 opt = SGD(lr=0.01, momentum=0.9)
 model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 # fit the keras model on the dataset
-model.fit(trainX, trainY, epochs=5, batch_size=5)
+model.fit(trainX, trainY, epochs=50, batch_size=5)
 # evaluate the keras model
 _, accuracy = model.evaluate(trainX, trainY)
 #print('Accuracy: %.2f' % (accuracy*100))
 
-testingDuration = 13
+testingDuration = 5
 testingData = getDataset("^GSPC", testingDuration)
 testingX = testingData.loc[:, ["sma50", "sma100", "sma200", "50-100", "50-200", "100-200", "spotTo50", "spotTo100", "spotTo200", "vix1", "peRatio"]].values
 
@@ -175,8 +175,8 @@ for date, row in testingGraph.iterrows():
     elif SHORT:
         lastPrice = row["Close"]
         dailyReturn = row["Close"] / lastPrice
-        currentValue = currentValue * (1 / dailyReturn)
-        current2XValue = current2XValue * (1 / (((dailyReturn - 1) * 2) + 1))
+        currentValue = currentValue * (1.0000 / dailyReturn)
+        current2XValue = current2XValue * (1.000 / (((dailyReturn - 1) * 2) + 1))
         # print(currentValue)
         portfolioValues.append(currentValue)
         portfolioValues2X.append(current2XValue)
@@ -208,7 +208,13 @@ portfolio2XReturns = (pow(portfolio2XLastPrice/portfolioStartingPrice, 1/(testin
 #print(portfolioReturns)
 print('Annual returns for 2 times leveraged Portfolio: %.2f' % portfolio2XReturns + f"%{bcolors.ENDC}")
 
-
+lastPrediction = 0
+changeCounter = 0
+for i in predictions:
+    if i != lastPrediction:
+        changeCounter = changeCounter + 1
+        lastPrediction = i
+print("Number of decision changes: " + str(changeCounter))
 testingFig, testingAxes = plt.subplots(2)
 
 testingAxes[0].plot(testingGraph.loc[:, ["portfolio"]], 'tab:blue', linewidth=0.3)
