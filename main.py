@@ -89,7 +89,7 @@ model.add(Dense(1, activation='sigmoid'))
 opt = SGD(lr=0.01, momentum=0.9)
 model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 # fit the keras model on the dataset
-model.fit(X, y, epochs=5, batch_size=10)
+model.fit(X, y, epochs=500, batch_size=10)
 # evaluate the keras model
 _, accuracy = model.evaluate(X, y)
 #print('Accuracy: %.2f' % (accuracy*100))
