@@ -6,7 +6,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 msft = yf.Ticker("^GSPC")
-numYears = 30
+numYears = 10
 dataset = msft.history(period=str(numYears)+"y")
 
 class bcolors:
@@ -136,7 +136,7 @@ portfolioReturns = (pow(portfolioLastPrice/portfolioStartingPrice, 1/(numYears))
 print('Annual returns for Portfolio: %.2f' % portfolioReturns + f"%{bcolors.ENDC}")
 
 finalGraph.plot(linewidth=0.3)
-plt.savefig('final.eps', format='eps', dpi=1000)
+plt.savefig('final.png', format='png', dpi=1000)
 plt.show()
 
 #for index, prediction in predictions:
