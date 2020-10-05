@@ -1,6 +1,9 @@
 SHORT = False
 useVixAndPE = False
 
+NASDAQ = "^IXIC"
+SP500 = "^GSPC"
+TQQQ = "TQQQ"
 
 class bcolors:
     HEADER = '\033[95m'
@@ -37,21 +40,6 @@ def getDataset(symbol, duration):
 
     closeData = dataset.loc[:, "Close"].to_frame()
     closeData["Close"] = (closeData["Close"] / closeData.loc[:, "Close"][0]) * 100
-    for ma_Duration in [50, 100, 200]:
-        movingAverageDatapoints = []
-        cumulatedResult = []
-        for date, row in closeData.iterrows():
-            # print(cumulatedResult)
-            if len(cumulatedResult) > ma_Duration:
-                cumulatedResult.pop(0)
-            cumulatedResult.append(row["Close"])
-            calc_Result = 0
-            for dataPoint in cumulatedResult:
-                calc_Result = calc_Result + dataPoint
-            calc_Result = calc_Result / len(cumulatedResult)
-            movingAverageDatapoints.append(calc_Result)
-        closeData["sma" + str(ma_Duration)] = movingAverageDatapoints
-
     _dateArray = []
     _monthlyReturns = []
     for date, row in closeData.iterrows():
@@ -66,17 +54,31 @@ def getDataset(symbol, duration):
             _monthlyReturns.append(1)
         else:
             _monthlyReturns.append(0)
-        if len(_dateArray) > 10:
+        if len(_dateArray) > 3:
             _dateArray.pop(0)
         # print(_monthlyReturns)
     closeData["outcome"] = _monthlyReturns
 
-    closeData["50-100"] = closeData["sma50"] - closeData["sma100"]
-    closeData["50-200"] = closeData["sma50"] - closeData["sma200"]
-    closeData["100-200"] = closeData["sma100"] - closeData["sma200"]
-    closeData["spotTo50"] = closeData["Close"] - closeData["sma50"]
-    closeData["spotTo100"] = closeData["Close"] - closeData["sma100"]
-    closeData["spotTo200"] = closeData["Close"] - closeData["sma200"]
+    closeData["SMA10"] = closeData.Close.rolling(10).mean()
+    closeData["SMA20"] = closeData.Close.rolling(20).mean()
+    closeData["SMA30"] = closeData.Close.rolling(30).mean()
+    closeData["SMA50"] = closeData.Close.rolling(50).mean()
+    closeData["SMA100"] = closeData.Close.rolling(100).mean()
+    closeData["SMA200"] = closeData.Close.rolling(200).mean()
+    closeData["50-100"] = closeData["SMA50"] - closeData["SMA100"]
+    closeData["50-200"] = closeData["SMA50"] - closeData["SMA200"]
+    closeData["100-200"] = closeData["SMA100"] - closeData["SMA200"]
+    closeData["spotTo10"] = closeData["Close"] - closeData["SMA10"]
+    closeData["spotTo20"] = closeData["Close"] - closeData["SMA20"]
+    closeData["spotTo30"] = closeData["Close"] - closeData["SMA30"]
+    closeData["spotTo50"] = closeData["Close"] - closeData["SMA50"]
+    closeData["spotTo100"] = closeData["Close"] - closeData["SMA100"]
+    closeData["spotTo200"] = closeData["Close"] - closeData["SMA200"]
+
+    delta = closeData.Close.diff()
+    up, down = delta.copy(), delta.copy()
+    up[up < 0] = 0
+    down[down > 0] = 0
 
     if useVixAndPE:
         peRatioData = quandl.get("MULTPL/SP500_PE_RATIO_MONTH")
@@ -118,46 +120,54 @@ def getDataset(symbol, duration):
         # axs[2].plot(closeData.loc[:, "divYield"], 'tab:green')
         # axs[2].set_title('Dividend Yield')
         fig.show()
+    #closeData.loc[:, ["Close", "SMA10", "SMA20", "SMA30", "SMA50", "SMA100", "SMA200"]].plot()
+    #plt.show()
+    closeData = closeData.iloc[199:,]
+    #print(closeData)
     return closeData
-
-
 from numpy import loadtxt
 from keras.models import Sequential
 from keras.layers import Dense
+import tensorflow as tf
 
 from keras.optimizers import SGD
 
 # split into input (X) and output (y) variables
 # "vix2", "vix3", "vix1-3", "vix2-3", "vix1-2"
-trainingData = getDataset("^GSPC", 5)
+trainingData = getDataset(SP500, 20)
 # trainX = trainingData.loc[:, ["sma50", "sma100", "sma200", "50-100", "50-200", "100-200", "spotTo50", "spotTo100", "spotTo200", "vix1", "peRatio"]].values
-keywords = ["sma50", "sma100", "sma200", "50-100", "50-200", "100-200", "spotTo50", "spotTo100", "spotTo200"]
+keywords = ["SMA10", "SMA20", "SMA30", "SMA50", "SMA100", "SMA200", "50-100", "50-200", "100-200", "spotTo10", "spotTo20", "spotTo30", "spotTo50", "spotTo100", "spotTo200"]
+#keywords = ["SMA50", "SMA100", "SMA200", "50-100", "50-200", "100-200", "spotTo50", "spotTo100", "spotTo200"]
 if useVixAndPE:
-    keywords.append("vix1").append("peRatio")
+    keywords.append("vix1")
+    keywords.append("peRatio")
 trainX = trainingData.loc[:, keywords].values
+#print(trainX)
 trainY = trainingData.loc[:, ["outcome"]].values
 # define the keras model
 model = Sequential()
 
 model.add(Dense(20, input_dim=len(keywords), activation='relu'))
 model.add(Dense(20, activation='relu'))
+
+#model.add(Dense(40, activation='relu'))
+
+#model.add(Dense(40, activation='relu'))
 model.add(Dense(1, activation='sigmoid'))
 # compile the keras model
-opt = SGD(lr=0.01, momentum=0.9)
 model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
 # fit the keras model on the dataset
-model.fit(trainX, trainY, epochs=5, batch_size=5)
+model.fit(trainX, trainY, epochs=50, batch_size=5, verbose=0)
 # evaluate the keras model
 _, accuracy = model.evaluate(trainX, trainY)
-# print('Accuracy: %.2f' % (accuracy*100))
+print('Accuracy: %.2f' % (accuracy*100))
 
 testingDuration = 20
-testingData = getDataset("^GSPC", testingDuration)
-# testingX = testingData.loc[:, ["sma50", "sma100", "sma200", "50-100", "50-200", "100-200", "spotTo50", "spotTo100", "spotTo200", "vix1", "peRatio"]].values
-testingX = testingData.loc[:,
-           ["sma50", "sma100", "sma200", "50-100", "50-200", "100-200", "spotTo50", "spotTo100", "spotTo200"]].values
+testingData = getDataset(SP500, testingDuration)
+#testingX = testingData.loc[:, ["sma50", "sma100", "sma200", "50-100", "50-200", "100-200", "spotTo50", "spotTo100", "spotTo200", "vix1", "peRatio"]].values
+testingX = testingData.loc[:, keywords].values
 predictions = model.predict_classes(testingX)
-print(testingX[len(testingX) - 1])
+#print(testingX[len(testingX) - 1])
 
 # print(predictions)
 testingGraph = testingData.loc[:, "Close"].to_frame()
@@ -181,11 +191,12 @@ for date, row in testingGraph.iterrows():
     if row["pred"] != 0:
         dailyReturn = row["Close"] / lastPrice
         if not wasLongLastTime:
-            currentValue = (currentValue * dailyReturn) * 0,99
+            currentValue = ((currentValue - 1) * dailyReturn)
+            current2XValue = (current2XValue - 1) * (((dailyReturn - 1) * 2) + 1)
         else:
             currentValue = (currentValue * dailyReturn)
+            current2XValue = current2XValue * (((dailyReturn - 1) * 2) + 1)
         wasLongLastTime = True
-        current2XValue = current2XValue * (((dailyReturn - 1) * 2) + 1)
         # print(currentValue)
         portfolioValues.append(currentValue)
         portfolioValues2X.append(current2XValue)
@@ -210,22 +221,25 @@ testingGraph["portfolio"] = portfolioValues
 # print(finalGraph)
 
 # absolute Return calculation
+decimalNumYear = len(testingData.index) / 365
 underlyingStartingPrice = testingData.loc[:, "Close"][0]
 underlyingLastPrice = testingData.loc[:, "Close"][len(testingData.loc[:, "Close"]) - 1]
-underlyingReturns = (pow(underlyingLastPrice / underlyingStartingPrice, 1 / (testingDuration)) - 1) * 100
+underlyingReturns = (pow(underlyingLastPrice / underlyingStartingPrice, 1 / (decimalNumYear)) - 1) * 100
 # print(underlyingReturns)
-print(f'{bcolors.OKBLUE}Annual returns for Underlying: %.2f' % underlyingReturns + "%")
+print()
+print(f'{bcolors.BOLD}Annual returns for Underlying:                            %.2f' % underlyingReturns + "%")
 
 portfolioStartingPrice = 100
 portfolioLastPrice = portfolioValues[len(portfolioValues) - 1]
-portfolioReturns = (pow(portfolioLastPrice / portfolioStartingPrice, 1 / (testingDuration)) - 1) * 100
+portfolioReturns = (pow(portfolioLastPrice / portfolioStartingPrice, 1 / (decimalNumYear)) - 1) * 100
+#print("Portfolio current value: " + str(portfolioLastPrice))
 # print(portfolioReturns)
-print('Annual returns for Portfolio: %.2f' % portfolioReturns + "%")
+print('Annual returns for Portfolio:                            %.2f' % portfolioReturns + "%")
 
 portfolio2XLastPrice = portfolioValues2X[len(portfolioValues2X) - 1]
-portfolio2XReturns = (pow(portfolio2XLastPrice / portfolioStartingPrice, 1 / (testingDuration)) - 1) * 100
+portfolio2XReturns = (pow(portfolio2XLastPrice / portfolioStartingPrice, 1 / (decimalNumYear)) - 1) * 100
 # print(portfolioReturns)
-print('Annual returns for 2 times leveraged Portfolio: %.2f' % portfolio2XReturns + f"%{bcolors.ENDC}")
+print('Annual returns for 2 times leveraged Portfolio:          %.2f' % portfolio2XReturns + "%")
 
 lastPrediction = 0
 changeCounter = 0
@@ -233,7 +247,43 @@ for i in predictions:
     if i != lastPrediction:
         changeCounter = changeCounter + 1
         lastPrediction = i
-print("Number of decision changes: " + str(changeCounter))
+print()
+print("Number of decision changes per year:                      " + str(int(changeCounter/decimalNumYear)))
+print()
+#Calculate Max Drawdown
+#analyze array: portfolioValues
+def calculateDrawdown(valuesArray):
+    maxDrawdown = 0
+    maxDrawdownDays = 0
+    for i in range(0, len(valuesArray)):
+        _startingValue = valuesArray[i]
+        _subArray = valuesArray[i:]
+        _maxDrawdownDays = 0
+        _maxDrawdown = 0
+        for _i in range(0, len(_subArray)):
+            _currentValue = _subArray[_i]
+            if _currentValue < _startingValue:
+                _drawdownPercent = -((_currentValue - _startingValue)/_startingValue)*100
+                if _drawdownPercent > _maxDrawdown:
+                    _maxDrawdown = _drawdownPercent
+                _maxDrawdownDays = _i + 1
+        if _maxDrawdown > maxDrawdown:
+            maxDrawdown = _maxDrawdown
+        if _maxDrawdownDays > maxDrawdownDays:
+            maxDrawdownDays = _maxDrawdownDays
+    return round(maxDrawdown, 0), maxDrawdownDays
+
+percentage, days = calculateDrawdown(testingData.loc[:, "Close"])
+print("Max Drawdown Stats for Underlying:")
+print("Worst Drawdown: " + str(percentage) + "%, longest Drawdown: " + str(days) + " days")
+print()
+percentage, days = calculateDrawdown(portfolioValues)
+print("Max Drawdown Stats for Portfolio:")
+print("Worst Drawdown: " + str(percentage) + "%, longest Drawdown: " + str(days) + " days")
+print()
+percentage, days = calculateDrawdown(portfolioValues2X)
+print("Max Drawdown Stats for 2x leveraged Portfolio:")
+print("Worst Drawdown: " + str(percentage) + "%, longest Drawdown: " + str(days) + " days"+ f"%{bcolors.ENDC}")
 # testingFig, testingAxes = plt.subplots(2)
 #
 # testingAxes[0].plot(testingGraph.loc[:, ["portfolio"]], 'tab:blue', linewidth=0.3)
