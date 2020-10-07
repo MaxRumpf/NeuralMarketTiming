@@ -39,7 +39,7 @@ def getDataset(symbol, duration):
     dataset = stock.history(period=str(duration) + "y")
 
     closeData = dataset.loc[:, "Close"].to_frame()
-    closeData["Close"] = (closeData["Close"] / closeData.loc[:, "Close"][0]) * 100
+    closeData["Close"] = (closeData["Close"] / closeData.loc[:, "Close"][199]) * 100
     _dateArray = []
     _monthlyReturns = []
     for date, row in closeData.iterrows():
@@ -128,16 +128,17 @@ def getDataset(symbol, duration):
 from numpy import loadtxt
 from keras.models import Sequential
 from keras.layers import Dense
+import keras
 import tensorflow as tf
 
 from keras.optimizers import SGD
 
 # split into input (X) and output (y) variables
 # "vix2", "vix3", "vix1-3", "vix2-3", "vix1-2"
-trainingData = getDataset(SP500, 20)
+trainingData = getDataset(NASDAQ, 20)
 # trainX = trainingData.loc[:, ["sma50", "sma100", "sma200", "50-100", "50-200", "100-200", "spotTo50", "spotTo100", "spotTo200", "vix1", "peRatio"]].values
-keywords = ["SMA10", "SMA20", "SMA30", "SMA50", "SMA100", "SMA200", "50-100", "50-200", "100-200", "spotTo10", "spotTo20", "spotTo30", "spotTo50", "spotTo100", "spotTo200"]
-#keywords = ["SMA50", "SMA100", "SMA200", "50-100", "50-200", "100-200", "spotTo50", "spotTo100", "spotTo200"]
+#keywords = ["SMA10", "SMA20", "SMA30", "SMA50", "SMA100", "SMA200", "50-100", "50-200", "100-200", "spotTo10", "spotTo20", "spotTo30", "spotTo50", "spotTo100", "spotTo200"]
+keywords = ["SMA50", "SMA100", "SMA200", "50-100", "50-200", "100-200", "spotTo50", "spotTo100", "spotTo200"]
 if useVixAndPE:
     keywords.append("vix1")
     keywords.append("peRatio")
@@ -145,25 +146,31 @@ trainX = trainingData.loc[:, keywords].values
 #print(trainX)
 trainY = trainingData.loc[:, ["outcome"]].values
 # define the keras model
-model = Sequential()
+useLoadedModel = False
+if useLoadedModel:
+    model = keras.models.load_model('models/NDX-20y-20y-without10SMA-50%ann-13maxDD-27decChanges')
+else:
+    model = Sequential()
 
-model.add(Dense(20, input_dim=len(keywords), activation='relu'))
-model.add(Dense(20, activation='relu'))
+    model.add(Dense(20, input_dim=len(keywords), activation='relu'))
+    model.add(Dense(20, activation='relu'))
 
-#model.add(Dense(40, activation='relu'))
+    #model.add(Dense(40, activation='relu'))
 
-#model.add(Dense(40, activation='relu'))
-model.add(Dense(1, activation='sigmoid'))
-# compile the keras model
-model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
-# fit the keras model on the dataset
-model.fit(trainX, trainY, epochs=50, batch_size=5, verbose=0)
-# evaluate the keras model
-_, accuracy = model.evaluate(trainX, trainY)
-print('Accuracy: %.2f' % (accuracy*100))
+    #model.add(Dense(40, activation='relu'))
+    model.add(Dense(1, activation='sigmoid'))
+    # compile the keras model
+    model.compile(loss='binary_crossentropy', optimizer='adam', metrics=['accuracy'])
+    # fit the keras model on the dataset
+    model.fit(trainX, trainY, epochs=50, batch_size=5, verbose=0)
+    # evaluate the keras model
+    _, accuracy = model.evaluate(trainX, trainY)
+    print('Accuracy: %.2f' % (accuracy*100))
 
 testingDuration = 20
-testingData = getDataset(SP500, testingDuration)
+testingData = getDataset(NASDAQ, testingDuration)
+print(testingData)
+#print(testingData.loc[:, "Close"][len(testingData.loc[:, "Close"].index) - 1])
 #testingX = testingData.loc[:, ["sma50", "sma100", "sma200", "50-100", "50-200", "100-200", "spotTo50", "spotTo100", "spotTo200", "vix1", "peRatio"]].values
 testingX = testingData.loc[:, keywords].values
 predictions = model.predict_classes(testingX)
@@ -250,6 +257,8 @@ for i in predictions:
 print()
 print("Number of decision changes per year:                      " + str(int(changeCounter/decimalNumYear)))
 print()
+
+
 #Calculate Max Drawdown
 #analyze array: portfolioValues
 def calculateDrawdown(valuesArray):
@@ -278,12 +287,18 @@ print("Max Drawdown Stats for Underlying:")
 print("Worst Drawdown: " + str(percentage) + "%, longest Drawdown: " + str(days) + " days")
 print()
 percentage, days = calculateDrawdown(portfolioValues)
+portfolioMaxDrawdown = percentage
 print("Max Drawdown Stats for Portfolio:")
 print("Worst Drawdown: " + str(percentage) + "%, longest Drawdown: " + str(days) + " days")
 print()
 percentage, days = calculateDrawdown(portfolioValues2X)
 print("Max Drawdown Stats for 2x leveraged Portfolio:")
 print("Worst Drawdown: " + str(percentage) + "%, longest Drawdown: " + str(days) + " days"+ f"%{bcolors.ENDC}")
+
+if not useLoadedModel:
+    modelFileName = "NDX-20y-20y-without10SMA-" + str(int(portfolioReturns)) + "%ann-" + str(int(portfolioMaxDrawdown)) + "maxDD-" + str(int(changeCounter/decimalNumYear)) + "decChanges"
+    model.save('models/' + modelFileName)
+
 # testingFig, testingAxes = plt.subplots(2)
 #
 # testingAxes[0].plot(testingGraph.loc[:, ["portfolio"]], 'tab:blue', linewidth=0.3)
@@ -292,64 +307,7 @@ print("Worst Drawdown: " + str(percentage) + "%, longest Drawdown: " + str(days)
 # testingAxes[1].set_title('Underlying and Decisions')
 testingGraph.plot()
 # testingFig.show()
-plt.savefig('final.png', format='png', dpi=1000)
+#plt.savefig('final.png', format='png', dpi=1000)
 plt.show()
 
-# for index, prediction in predictions:
-#	print('%s => %d (expected %d)' % (X[i].tolist(), predictions[i], y[i]))
-
-
-from backtesting import Backtest, Strategy
-from backtesting.lib import crossover
-
-from backtesting.test import SMA, GOOG
-
-preds = []
-class PracticalTester(Strategy):
-    def init(self):
-        price = self.data.Close
-        self.sma50 = self.I(SMA, price, 50)
-        self.sma100 = self.I(SMA, price, 100)
-        self.sma200 = self.I(SMA, price, 200)
-
-    # def next(self):
-    #     if self.ma50 > self.ma100 and (self.position.is_short or not self.position):
-    #         self.buy()
-    #     elif self.ma50 < self.ma100 and (self.position.is_long or not self.position):
-    #         self.sell()
-    # ["sma50", "sma100", "sma200", "50-100", "50-200", "100-200", "spotTo50", "spotTo100", "spotTo200"
-    def next(self):
-        sma50 = float(self.sma50)
-        sma100 = float(self.sma100)
-        sma200 = float(self.sma200)
-        sma5m1 = float(sma50 - sma100)
-        sma5m2 = float(sma50 - sma200)
-        sma1m2 = float(sma100 - sma200)
-        price = self.data.Close[-1]
-        spotTo50 = price - sma50
-        spotTo100 = price - sma100
-        spotTo200 = price - sma200
-        dataArray = [[sma50, sma100, sma200, sma5m1, sma5m2, sma1m2, spotTo50, spotTo100, spotTo200]]
-        #print(dataArray)
-        # print("TestingX:")
-        # print(testingX)
-        # print("Data Array:")
-        # print(dataArray)
-        #print(self.equity)
-        willGoUp = model.predict_classes(dataArray)[0][0] == 1
-        if willGoUp:
-            preds.append(1)
-        else:
-            preds.append(0)
-        if not self.position.is_long and willGoUp:
-            self.buy(size=0.9999999)
-        elif self.position.is_long and not willGoUp:
-            self.position.close()
-
-#sp500 = yf.Ticker("^GSPC").history("20y").loc[:, ["Open", "High", "Low", "Close"]]
-#bt = Backtest(sp500, PracticalTester, commission=.00, exclusive_orders=True, trade_on_close=True)
-#stats = bt.run()
-#print(stats)
-#pd.DataFrame(data={'pred': preds}).plot()
-#bt.plot()
 
